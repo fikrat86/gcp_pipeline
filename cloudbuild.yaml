@@ -1,28 +1,47 @@
+substitutions:
+  _SERVICE_NAME: gcp-pipeline
+  _REGION: us-central1
+  _REPO: us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000
+  _IMAGE_NAME: gcp_pipeline
+
 steps:
-  # Docker Build Hushng
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 
-           'us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000/assignment2:${SHORT_SHA}', 
-           '.']
-
-  # Docker Push
+    id: Build
+    args:
+      - build
+      - -f
+      - Dockerfile
+      - -t
+      - '${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+      - -t
+      - '${_REPO}/${_IMAGE_NAME}:latest'
+      - .
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 
-           'us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000/assignment2:${SHORT_SHA}']
-
+    id: Push SHA Tag
+    args: ['push', '${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}']
+  - name: 'gcr.io/cloud-builders/docker'
+    id: Push Latest Tag
+    args: ['push', '${_REPO}/${_IMAGE_NAME}:latest']
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: Deploy
     entrypoint: gcloud
     args:
-    - 'run'
-    - 'deploy'
-    - 'assignment2'
-    - '--image'
-    - 'us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000/assignment2:${SHORT_SHA}'
-    - '--region'
-    - 'us-central1'
-    
+      - run
+      - deploy
+      - '${_SERVICE_NAME}'
+      - --image
+      - '${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+      - --region
+      - '${_REGION}'
+      - --platform
+      - managed
+      - --quiet
+#      - --allow-unauthenticated   # Uncomment if public access is desired
+
 images:
-  - 'us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000/assignment2:${SHORT_SHA}'
-  
+  - '${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
+  - '${_REPO}/${_IMAGE_NAME}:latest'
+
 options:
-    defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
+  logging: CLOUD_LOGGING_ONLY
