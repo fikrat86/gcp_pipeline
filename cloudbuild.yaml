@@ -1,10 +1,37 @@
 substitutions:
-  _SERVICE_NAME: gcp-pipeline
-  _REGION: us-central1
+  _PROJECT_ID: semester-2-408906
+  _SERVICE_NAME: gcp-pipeline            # Cloud Run service name (must use hyphens, lowercase)
+  _REGION: us-central1                   # Deployment region
   _REPO: us-central1-docker.pkg.dev/semester-2-408906/demo-0000000000
-  _IMAGE_NAME: gcp_pipeline
+  _IMAGE_NAME: gcp-pipeline              # Use hyphenated image name for consistency
+  _MEMORY: 512Mi                         # Cloud Run memory limit
+  _CONCURRENCY: 80                       # Cloud Run request concurrency
+  _CPU: 1                                # vCPU allocation
+  _ALLOW_UNAUTH: "false"                # Set to "true" to allow public access
 
 steps:
+  # 0. Defensive: ensure Dockerfile exists (catches earlier failure mode)
+  - name: alpine
+    id: Verify Dockerfile
+    entrypoint: sh
+    args: ['-c', 'test -f Dockerfile || { echo "ERROR: Dockerfile missing"; exit 1; }']
+
+  # 1. Install dependencies (including dev) for running tests & linting
+  - name: 'gcr.io/cloud-builders/npm'
+    id: NPM Install
+    args: ['ci']
+
+  # 2. Run tests (will fail the build if tests fail). Adjust or remove if not desired.
+  - name: 'gcr.io/cloud-builders/npm'
+    id: Tests
+    args: ['test', '--', '--ci', '--runInBand']
+
+  # 3. (Optional) Lint / format check placeholder (uncomment if you add eslint)
+  # - name: 'gcr.io/cloud-builders/npm'
+  #   id: Lint
+  #   args: ['run', 'lint']
+
+  # 4. Build minimal production image (only prod deps inside final image via Dockerfile)
   - name: 'gcr.io/cloud-builders/docker'
     id: Build
     args:
@@ -35,8 +62,17 @@ steps:
       - '${_REGION}'
       - --platform
       - managed
+      - --memory
+      - '${_MEMORY}'
+      - --concurrency
+      - '${_CONCURRENCY}'
+      - --cpu
+      - '${_CPU}'
+      - --set-env-vars
+      - 'NODE_ENV=production'
       - --quiet
-#      - --allow-unauthenticated   # Uncomment if public access is desired
+      - $( [ "${_ALLOW_UNAUTH}" = "true" ] && echo "--allow-unauthenticated" || echo "--no-allow-unauthenticated" )
+    # NOTE: The shell substitution above is evaluated by gcloud; ensure Cloud Build uses bash/sh. If issues, replace with explicit true/false handling.
 
 images:
   - '${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}'
@@ -45,3 +81,11 @@ images:
 options:
   defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET
   logging: CLOUD_LOGGING_ONLY
+  machineType: E2_SMALL
+
+timeout: 900s
+
+tags:
+  - gcp-pipeline
+  - nodejs
+  - cloud-run
